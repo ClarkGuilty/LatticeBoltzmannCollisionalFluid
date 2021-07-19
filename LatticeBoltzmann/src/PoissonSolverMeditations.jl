@@ -56,7 +56,6 @@ dx = x[2]-x[1]
 
 using DiffEqOperators: PeriodicBC
 q = PeriodicBC(typeof(phi_0))
-PeriodicBC()
 
 rho = num_diff(phi_0,diff_order,approx_order,dx)
 #phi = solve_f(y1, L, alpha, n)
