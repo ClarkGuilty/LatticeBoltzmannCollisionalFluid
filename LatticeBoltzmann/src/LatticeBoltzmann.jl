@@ -13,18 +13,18 @@ using BenchmarkTools
 #include("PoissonSolver.jl")
 ##PoissonSolver
 
-"Returns the Poisson coefficient 1/λ², takes a int i, array length n and spatial length L."
-function λ1(i, n, L)
+"Returns the Poisson coefficient 1/λ², takes an int i, array length n and spatial length L."
+function λ1(i, n, L)::AbstractFloat
     if i == 1
-        return 0
+        return 0.0
     end
     -(2*π*fftfreq(n)[i]/L*n)^(-2)
 end
 
-"Returns and array of λ⁻² of array length n and spatial length L."
+"Returns and array of λ⁻² of size n and spatial length L."
 λ(n, L=1) = λ1.(1:n,n, L)
 
-"Solves Poisson equation for an array rho, rerpresenting an spatial length of L and with a coefficient alpha."
+"Solves Poisson equation for an array rho, representing an spatial length of L and with a coefficient alpha."
 function solve_f(rho, L, alpha)
     return real.(ifft(alpha .* fft(rho) .* λ(length(rho),L) ))
     #return ifft(ifftshift(fftshift(fft(rho)) .* λ1(length(rho))))
@@ -44,6 +44,45 @@ end
 
 function jeans(x, v, ρ = 0.0001, σ = 0.05, A = 0.9999, k = 4π)
     ρ * exp(- v^2 * 0.5 / σ^2 ) / sqrt(2 * π * σ^2) * (1 + A*cos(k*x))
+end
+
+##
+#G = 0.001
+
+"2D gaussian"
+gaussian_2d(x,y) = gaussian(x,0,0.08) * gaussian(y,0,0.08)
+
+
+"Integrates the grid matrix with Δv = dv and load the results on density."
+function integrate_lattice!(density::Vector{Float64},
+    grid::Matrix{Float64},dv::Float64)
+    for i in 1:size(grid)[1]
+        density[i] = 0
+        for j in 1:size(grid)[2]
+            density[i] += grid[j,i]
+        end
+    end
+    density = density .* dv
+end
+
+"Integrates the grid matrix with Δv = dv and load the results on density, returns the total mass, the kinetic energy and potential energy."
+function integrate_lattice!(density::Vector{Float64},
+    grid::Matrix{Float64},dx::Float64,dv::Float64,
+    v::Vector{Float64},phi::Vector{Float64})
+    total_mass = 0
+    total_K_e = 0
+    total_U_e = 0
+    for i in 1:size(grid)[1]
+        density[i] = 0
+        for j in 1:size(grid)[2]
+            density[i] += grid[j,i]
+            total_K_e += grid[j,i]*v[j]^2
+        end
+        total_mass += density[i]
+        total_U_e += phi[i]*density[i]*dv
+    end
+    density = density .* dv
+    total_mass*dx*dv, 0.5*total_K_e*dx*dv, 0.5*total_U_e*dx
 end
 
 @with_kw mutable struct Lattice
@@ -67,46 +106,8 @@ end
 end
 
 
-##
-#G = 0.001
-
-"2D gaussian"
-gaussian_2d(x,y) = gaussian(x,0,0.08) * gaussian(y,0,0.08)
-
-
-"Integrates the grid matrix with Δv = dv and load the results on density."
-function integrate_lattice!(density::Vector{Float64},grid::Matrix{Float64},dv::Float64)
-    for i in 1:size(grid)[1]
-        density[i] = 0
-        for j in 1:size(grid)[2]
-            density[i] += grid[j,i]
-        end
-    end
-    density = density*dv
-end
-
-"Integrates the grid matrix with Δv = dv and load the results on density, returns the total mass, the kinetic energy and potential energy."
-function integrate_lattice!(density::Vector{Float64},
-    grid::Matrix{Float64},dx::Float64,dv::Float64,
-    v::Vector{Float64},phi::Vector{Float64})
-    total_mass = 0
-    total_K_e = 0
-    total_U_e = 0
-    for i in 1:size(grid)[1]
-        density[i] = 0
-        for j in 1:size(grid)[2]
-            density[i] += grid[j,i]
-            total_K_e += grid[j,i]*v[j]^2
-        end
-        total_mass += density[i]
-        total_U_e += phi[i]*density[i]*dv
-    end
-    density = density .* dv
-    total_mass*dx*dv, 0.5*total_K_e*dx*dv, 0.5*total_U_e*dx
-end
-
 "Velocity initial conditions"
-vel(i,V_min=-1, dv = 2/1023) = V_min + (1.0*(i-1))*dv
+vel(i,V_min=-1.0, dv = 2/1023) = V_min + (1.0*(i-1))*dv
 #vel_i(i,V_min=v_min, dv = dv) = vel(i,V_min=v_min, dv = dv)
 
 "Drift"
@@ -124,9 +125,11 @@ function rotate_vel!(arr::Matrix{Float64}, n::Vector{Int64})
     end
 end
 #
+
 "Runs the simulations"
 function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
-    v_0::Vector{Float64},history_M::Array{Float64},history_K::Array{Float64}, history_U::Array{Float64})
+    v_0::Vector{Float64},history_M::Array{Float64},
+    history_K::Array{Float64}, history_U::Array{Float64})
     for i in 1:sim.Nt
 #        sim.ρ = integrate_lattice!(zeros(size(sim.grid)[2]), sim.grid,sim.dv)
         (history_M[i], history_K[i], history_U[i]) = integrate_lattice!(sim.ρ, sim.grid, sim.dx,sim.dv, Vector(v_0),sim.Φ)
@@ -137,3 +140,4 @@ function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
     end
     t = sim.Nt * sim.dt
 end
+

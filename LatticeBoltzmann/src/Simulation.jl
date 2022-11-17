@@ -28,14 +28,14 @@ sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = Nt, dt = dt, V_
 
 ##
 #gr()
-plot(x_0, v_0,sim.grid, st = :contour,
-    xaxis = ("Position"),
-    yaxis = ("Velocity"),
-    c = :bluesreds)
+# plot(x_0, v_0,sim.grid, st = :contour,
+#     xaxis = ("Position"),
+#     yaxis = ("Velocity"),
+#     c = :bluesreds)
 
 @time heatmap(sim.grid)
 
-sim.Nt =5
+
 #sim.dt = 0.1*sim.dx/sim.dv
 sim.dt = 0.1
 t = 0.0
@@ -46,18 +46,17 @@ history_M = Array{Float64}(undef, sim.Nt)
 history_K = Array{Float64}(undef, sim.Nt)
 history_U = Array{Float64}(undef, sim.Nt)
 
-sim.Nt = 5
+##
+
+@time simulate!(sim,t,Float64.(x_0),
+    Float64.(v_0),history_M,history_K,history_U)
 @time heatmap(sim.grid)
 ##
 
-@time simulate!(sim,t,Float64.(x_0),Float64.(v_0),history_M,history_K,history_U)
-@time heatmap(sim.grid)
-##
 
-
-plot(x_0, v_0,sim.grid, st = :contour, xaxis = ("Position", (x_min,x_max)),
+plot(x_0, v_0,sim.grid, st = :heatmap, xaxis = ("Position", (x_min,x_max)),
     yaxis = ("Velocity", (v_min,v_max)),
-    c = :bluesreds)
+    c = :viridis)
 
 plot(x_0, v_0,sim.grid, st = :contour,
     xaxis = ("Position"),
@@ -70,7 +69,7 @@ plot!(xticks = x_min:0.1:x_max)
 theme(:juno)
 ##end # module
 
-gauss_init = 4 * exp.((-(x_0 .^2 .+ v_0' .^2)) ./0.08^2)
+gauss_init = @. 4 * exp.((-(x_0 .^2 .+ v_0' .^2)) ./0.08^2)
 sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = Nt, dt = dt, V_min=v_min, V_max=v_max,
                 grid = copy(gauss_init))
 #
