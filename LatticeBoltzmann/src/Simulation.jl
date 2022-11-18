@@ -11,8 +11,8 @@ x_min = -0.5
 x_max = 0.5
 lv = v_max - v_min
 lx = x_max - x_min
-dv = lv / (N-1)
-dx = lx / (N-1)
+dv = lv / (N)
+dx = lx / (N)
 dt = 0.1
 #v_0 = v_min:dv:v_max
 #x_0 = x_min:dx:x_max
@@ -21,19 +21,16 @@ x_0 = LinRange(x_min,x_max,N+1)[1:end-1]
 G = 1.0
 #gauss_init0 = 4*gaussian_2d.(x_0',v_0)
 #gauss_init = 4 * exp.((-(x_0 .^2 .+ v_0' .^2)) ./0.08^2)
-jeans_init = jeans.(x_0', v_0 )
+jeans_init = jeans.(x_0', v_0,σ=0.1)
+
 
 sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = Nt, dt = dt, V_min=v_min, V_max=v_max,
                 grid = copy(jeans_init))
 
-##
-#gr()
-# plot(x_0, v_0,sim.grid, st = :contour,
-#     xaxis = ("Position"),
-#     yaxis = ("Velocity"),
-#     c = :bluesreds)
-
 @time heatmap(sim.grid)
+##
+
+
 
 
 #sim.dt = 0.1*sim.dx/sim.dv

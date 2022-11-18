@@ -42,7 +42,8 @@ function gaussian(x, μ=0,σ=1, A=1)
     A * exp(-((x - μ) / σ)^2)
 end
 
-function jeans(x, v, ρ = 0.0001, σ = 0.05, A = 0.9999, k = 4π)
+"Initializes a jeans distribution"
+function jeans(x, v; ρ = 0.0001, σ = 0.05, A = 0.9999, k = 4π)
     ρ * exp(- v^2 * 0.5 / σ^2 ) / sqrt(2 * π * σ^2) * (1 + A*cos(k*x))
 end
 
