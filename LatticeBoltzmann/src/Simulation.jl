@@ -13,7 +13,7 @@ lv = v_max - v_min
 lx = x_max - x_min
 dv = lv / (N)
 dx = lx / (N)
-dt = 0.1
+dt = 0.1*dx/dv
 #v_0 = v_min:dv:v_max
 #x_0 = x_min:dx:x_max
 v_0 = LinRange(v_min,v_max,N+1)[1:end-1]
@@ -30,11 +30,6 @@ sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = Nt, dt = dt, V_
 @time heatmap(sim.grid)
 ##
 
-
-
-
-#sim.dt = 0.1*sim.dx/sim.dv
-sim.dt = 0.1
 t = 0.0
 
 ##

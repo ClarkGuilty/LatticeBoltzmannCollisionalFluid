@@ -63,6 +63,47 @@ function integrate_lattice!(density::Vector{Float64},
             density[i] += grid[j,i]
         end
     end
+    nothing
+end
+
+function integrate_one_dimension(output::Vector{Float64}, grid::Matrix{Float64})
+    for i in 1:size(grid)[1]
+        output[i] = zero(grid[i,1])
+        for j in 1:size(grid)[2]
+            output[i] += grid[j,i]
+        end
+    end
+end
+
+function integrate_one_dimensionA(output::Vector{Float64}, grid::Matrix{Float64})
+    for j in 1:1:size(grid)[1]
+        output[j] = zero(grid[j,1])
+        for i in 1:1:size(grid)[2]
+            output[j] += grid[i,j]
+        end
+    end
+end
+
+jeans_init
+density = similar(copy(sim.ρ))
+plot(density)
+@btime integrate_one_dimension(density,jeans_init)
+@btime integrate_one_dimensionA(density,jeans_init)
+
+integrate_one_dimension(density,jeans_init)
+integrate_one_dimensionA(density,jeans_init)
+plot(density)
+
+
+"Integrates the grid matrix with Δv = dv and load the results on density."
+function integrate_lattice(grid::Matrix{Float64},dv::Float64)
+    density = zeros(size(grid)[2])
+    for i in 1:size(grid)[1]
+        density[i] = 0
+        for j in 1:size(grid)[2]
+            density[i] += grid[j,i]
+        end
+    end
     density = density .* dv
 end
 
@@ -100,7 +141,7 @@ end
     dx::Float64 = L/Nx
     dv::Float64 = L/Nx
     grid::Matrix{Float64}
-    ρ::Vector{Float64} = integrate_lattice!(zeros(size(grid)[2]), grid,dv)
+    ρ::Vector{Float64} = integrate_lattice(grid,dv)
     mass::Float64 = sum(ρ)*dx
     Φ::Vector{Float64} = solve_f(ρ.-mass/Nx,L,4*π*G)
     a::Vector{Float64} = num_diff(Φ,1,5,dx)
@@ -142,3 +183,20 @@ function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
     t = sim.Nt * sim.dt
 end
 
+"Runs the simulations"
+function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
+    v_0::Vector{Float64})
+    for i in 1:sim.Nt
+        integrate_lattice!(sim.ρ, sim.grid, sim.dx,sim.dv, Vector(v_0),sim.Φ)
+        sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*G)
+        sim.a = -num_diff(sim.Φ,1,5,sim.dx)
+        rotate_pos!(sim.grid, v_0)
+        rotate_vel!(sim.grid, (-N .+ Int32.((round.(sim.a/sim.dv * sim.dt)))) .% N)
+    end
+    sim.ρ = integrate_lattice!(zeros(size(sim.grid)[2]), sim.grid,sim.dv)
+    sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*G)
+    sim.a = -num_diff(sim.Φ,1,5,sim.dx)
+    rotate_pos!(sim.grid, Vector(v_0))
+    rotate_vel!(sim.grid, (-sim.Nv .+ Int32.((round.(sim.a/sim.dv * sim.dt)))) .% sim.Nv)
+    t = sim.Nt * sim.dt
+end
