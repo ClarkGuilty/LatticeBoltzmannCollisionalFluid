@@ -71,7 +71,7 @@ plot(x,[phi_final, phi_0], label = ["numerical" "analytical"])
 
 function /̃(x::Number, y::Number)
     if x == one(typeof(x)) && y == zero(typeof(y))
-        0.0
+        zero(typeof(y))
     else
         Base.:(/)(x, y)
     end

@@ -16,9 +16,9 @@ using BenchmarkTools
 "Returns the Poisson coefficient 1/λ², takes an int i, array length n and spatial length L."
 function λ1(i, n, L)::AbstractFloat
     if i == 1
-        return 0.0
+        return zero(1.0)
     end
-    -(2*π*fftfreq(n)[i]/L*n)^(-2)
+    -(2*π*fftfreq(n)[i]/L*n)^(-2.0)
 end
 
 "Returns and array of λ⁻² of size n and spatial length L."
@@ -55,51 +55,24 @@ gaussian_2d(x,y) = gaussian(x,0,0.08) * gaussian(y,0,0.08)
 
 
 "Integrates the grid matrix with Δv = dv and load the results on density."
-function integrate_lattice!(density::Vector{Float64},
-    grid::Matrix{Float64},dv::Float64)
-    for i in 1:size(grid)[1]
-        density[i] = 0
-        for j in 1:size(grid)[2]
-            density[i] += grid[j,i]
-        end
-    end
-    nothing
-end
-
-function integrate_one_dimension(output::Vector{Float64}, grid::Matrix{Float64})
+function integrate_lattice!(output::Vector{Float64}, grid::Matrix{Float64}, dv::Float64)
     for i in 1:size(grid)[1]
         output[i] = zero(grid[i,1])
         for j in 1:size(grid)[2]
             output[i] += grid[j,i]
         end
+        output[i] *= dv
     end
+    nothing
 end
 
-function integrate_one_dimensionA(output::Vector{Float64}, grid::Matrix{Float64})
-    for j in 1:1:size(grid)[1]
-        output[j] = zero(grid[j,1])
-        for i in 1:1:size(grid)[2]
-            output[j] += grid[i,j]
-        end
-    end
-end
-
-jeans_init
-density = similar(copy(sim.ρ))
-plot(density)
-@btime integrate_one_dimension(density,jeans_init)
-@btime integrate_one_dimensionA(density,jeans_init)
-
-integrate_one_dimension(density,jeans_init)
-integrate_one_dimensionA(density,jeans_init)
-plot(density)
-
+@btime integrate_one_dimension(sim.ρ,sim.grid,sim.dv)
 
 "Integrates the grid matrix with Δv = dv and load the results on density."
 function integrate_lattice(grid::Matrix{Float64},dv::Float64)
-    density = zeros(size(grid)[2])
-    for i in 1:size(grid)[1]
-        density[i] = 0
+    density = zeros(typeof(grid[end,end]), size(grid)[2])
+    for i in 1:size(density)[1]
+        density[i] = zero(density[i])
         for j in 1:size(grid)[2]
             density[i] += grid[j,i]
         end
@@ -140,6 +113,7 @@ end
     dt::Float64 = 0.04
     dx::Float64 = L/Nx
     dv::Float64 = L/Nx
+    G::Float64
     grid::Matrix{Float64}
     ρ::Vector{Float64} = integrate_lattice(grid,dv)
     mass::Float64 = sum(ρ)*dx
@@ -157,6 +131,7 @@ function rotate_pos!(arr::Matrix{Float64},v_0::Vector{Float64})
     for i in 1:size(arr)[1]
         circshift!(view(arr,i,:), arr[i,:],(-size(arr)[1] + Int32(round(v_0[i]/dx*dt))) % size(arr)[1])
     end
+    nothing
 end
 
 "Kick"
@@ -165,11 +140,12 @@ function rotate_vel!(arr::Matrix{Float64}, n::Vector{Int64})
         #println(n[i])
         circshift!(view(arr,:,i), arr[:,i],n[i])
     end
+    nothing
 end
 #
 
 "Runs the simulations"
-function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
+function simulate_store_energies!(sim::Lattice, t::Float64, x_0::Vector{Float64},
     v_0::Vector{Float64},history_M::Array{Float64},
     history_K::Array{Float64}, history_U::Array{Float64})
     for i in 1:sim.Nt
@@ -183,20 +159,20 @@ function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
     t = sim.Nt * sim.dt
 end
 
-"Runs the simulations"
-function simulate!(sim::Lattice, t::Float64, x_0::Vector{Float64},
-    v_0::Vector{Float64})
+
+function integrate_steps(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64})
     for i in 1:sim.Nt
-        integrate_lattice!(sim.ρ, sim.grid, sim.dx,sim.dv, Vector(v_0),sim.Φ)
-        sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*G)
+        integrate_lattice!(sim.ρ, sim.grid, sim.dv)
+        sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*sim.G)
         sim.a = -num_diff(sim.Φ,1,5,sim.dx)
         rotate_pos!(sim.grid, v_0)
-        rotate_vel!(sim.grid, (-N .+ Int32.((round.(sim.a/sim.dv * sim.dt)))) .% N)
+        rotate_vel!(sim.grid, (-sim.Nv .+ Int32.((round.(sim.a/sim.dv * sim.dt)))) .% sim.Nv)
     end
-    sim.ρ = integrate_lattice!(zeros(size(sim.grid)[2]), sim.grid,sim.dv)
-    sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*G)
-    sim.a = -num_diff(sim.Φ,1,5,sim.dx)
-    rotate_pos!(sim.grid, Vector(v_0))
-    rotate_vel!(sim.grid, (-sim.Nv .+ Int32.((round.(sim.a/sim.dv * sim.dt)))) .% sim.Nv)
-    t = sim.Nt * sim.dt
+    nothing
+end
+
+"Runs the simulations"
+function simulate!(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64}; t0::Float64 = 0)
+    integrate_steps(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64})
+    sim.Nt * sim.dt + t0
 end
