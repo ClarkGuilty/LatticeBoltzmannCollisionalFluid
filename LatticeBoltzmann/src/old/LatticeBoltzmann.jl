@@ -66,7 +66,6 @@ function integrate_lattice!(output::Vector{Float64}, grid::Matrix{Float64}, dv::
     nothing
 end
 
-@btime integrate_one_dimension(sim.ρ,sim.grid,sim.dv)
 
 "Integrates the grid matrix with Δv = dv and load the results on density."
 function integrate_lattice(grid::Matrix{Float64},dv::Float64)
