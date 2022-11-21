@@ -52,8 +52,9 @@ end
 
 "2D gaussian"
 gaussian_2d(x,y) = gaussian(x,0,0.08) * gaussian(y,0,0.08)
-
-
+function bullet_cluster(x,v,x0,v0,x1,v1;σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=20)
+    gaussian(x,x0,σx1,A1) * gaussian(v,v0,σv1) #+ gaussian(x,x1,σx2,A2) * gaussian(v,v1,σv2)
+end
 "Integrates the grid matrix with Δv = dv and loads the results on density."
 function integrate_lattice!(density::Vector{Float64}, grid::Matrix{Float64}, dv::Float64)
     for i in 1:size(grid)[1]
@@ -107,7 +108,11 @@ function rotate_pos!(arr::Matrix{Float64},v_0::Vector{Float64})
     nothing
 end
 
-function drift!()
+function calculate_new_pos(i,j)
+
+end
+
+function kick()
     
     nothing
 end

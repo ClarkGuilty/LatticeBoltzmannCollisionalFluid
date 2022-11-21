@@ -30,12 +30,12 @@ x_0 = Float64.(LinRange(x_min,x_max,N+1)[1:end-1])
 # T = lx/lv
 # ρ = G^2 / T
 
-ρ = 10
+ρ = 1
 σ = 0.1
 A = 0.1
 k = 4 * π
 # σ = sqrt( G * lx^2 * β^2 * ρ / (π * n^2))
-kj = 4 * π * G * ρ / σ^2
+kj = sqrt(4 * π * G * ρ / σ^2)
 # k/kj
 
 jeans_init = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A)
@@ -68,13 +68,17 @@ plot(x_0,sim.ρ)
 @profview simulate!(sim,Float64.(x_0),Float64.(v_0);t0=zero(1.0))
 heatmap(sim.grid)
 ##
+bullet_init = bullet_cluster.(x_0,v_0',-1,0,1,0;σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=20)
+heatmap(bullet_init)
+
+##
 sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = 1,
-                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.00005,
-                grid = copy(jeans_init))
+                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.0005,
+                grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
 
 
 
-@time anim = @animate for i in 1:100
+@time anim = @animate for i in 1:25
     heatmap(sim.grid,c = :viridis)
     simulate!(sim,Float64.(x_0),Float64.(v_0);t0=zero(1.0))
 end every 2
