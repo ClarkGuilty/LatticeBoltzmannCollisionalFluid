@@ -1,5 +1,5 @@
 include("LatticeBoltzmann.jl")
-
+##
 gr()
 #Initializing
 N = 2048
@@ -68,33 +68,32 @@ plot(x_0,sim.ρ)
 @profview simulate!(sim,Float64.(x_0),Float64.(v_0);t0=zero(1.0))
 heatmap(sim.grid)
 ##
-bullet_init = bullet_cluster.(x_0,v_0',-1,0,1,0;σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=20)
-heatmap(bullet_init)
+
+
 
 ##
+bullet_init = bullet_cluster.(x_0',v_0;x0=-0.2,x1=0.2,σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=10)
+heatmap(bullet_init)
 sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = 1,
-                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.0005,
-                grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
+                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.5,
+                #grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
+                grid = bullet_cluster.(x_0',v_0;x0=-0.2,x1=0.2,σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=10))
 
 
 
-@time anim = @animate for i in 1:25
-    heatmap(sim.grid,c = :viridis)
+@time anim = @animate for i in 1:100
+    heatmap(sim.grid)
     simulate!(sim,Float64.(x_0),Float64.(v_0);t0=zero(1.0))
 end every 2
 gif(anim, "/tmp/anim_fps15.gif", fps = 10)
 ##
-# @time anim = @animate for i in 1:5
-#     heatmap(sim.grid,c = :viridis)
-#     integrate_lattice!(sim.ρ,sim.grid,sim.dv)
-#     sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*G)
-#     sim.a = -num_diff(sim.Φ,1,5,sim.dx)
-#     rotate_pos!(sim.grid, Vector(v_0))
-#     rotate_vel!(sim.grid, (-sim.Nv .+ Int32.((round.(sim.a/sim.dv * sim.dt)))) .% sim.Nv)
-# end every 1
 
-# @btime integrate_lattice!(sim.ρ,sim.grid,dv)
-# @btime sim.ρ = integrate_lattice(sim.grid,sim.dv)
+sim
 
-
-
+ϕ = copy(sim.Φ)
+ϕ[1,1] = 0
+ϕ
+sim.Φ=ϕ
+ϕ[1,1] = 10000
+sim.Φ
+ϕ

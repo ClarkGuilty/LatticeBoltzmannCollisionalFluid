@@ -9,7 +9,8 @@ using ForwardDiff: gradient
 using DiffEqOperators
 using Parameters
 using BenchmarkTools
-
+Base.IndexStyle(::Type{<:Matrix}) = IndexLinear()
+Base.IndexStyle(::Type{<:Matrix}) = IndexCartesian()
 #include("PoissonSolver.jl")
 ##PoissonSolver
 
@@ -51,15 +52,15 @@ end
 #G = 0.001
 
 "2D gaussian"
-gaussian_2d(x,y) = gaussian(x,0,0.08) * gaussian(y,0,0.08)
-function bullet_cluster(x,v,x0,v0,x1,v1;σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=20)
-    gaussian(x,x0,σx1,A1) * gaussian(v,v0,σv1) #+ gaussian(x,x1,σx2,A2) * gaussian(v,v1,σv2)
+gaussian_2d(x,v;σx=0.08,σv=0.08,A=40) = gaussian(x,0,σx,A) * gaussian(v,0,σv)
+function bullet_cluster(x,v;x0=-0.2,v0=0.0,x1=0.2,v1=0.0,σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=20)
+    gaussian(x,x0,σx1,A1) * gaussian(v,v0,σv1) + gaussian(x,x1,σx2,A2) * gaussian(v,v1,σv2)
 end
 "Integrates the grid matrix with Δv = dv and loads the results on density."
 function integrate_lattice!(density::Vector{Float64}, grid::Matrix{Float64}, dv::Float64)
-    for i in 1:size(grid)[1]
-        density[i] = zero(grid[i,1])
-        for j in 1:size(grid)[2]
+    for i in 1:size(grid,2)
+        density[i] = 0
+        for j in 1:size(grid,1)
             density[i] += grid[j,i]
         end
         density[i] *= dv
@@ -74,32 +75,34 @@ function integrate_lattice(grid::Matrix{Float64},dv::Float64)
     density
 end
 
-@with_kw mutable struct Lattice
-    X_min::Float64 = -0.5
-    X_max::Float64 = 0.5
-    L::Float64 = X_max - X_min
-    V_min::Float64 = -1
-    V_max::Float64 = 1
-    η::Float64 = V_max - V_min
+@with_kw mutable struct Lattice{T <: AbstractFloat}
+    X_min::T = -0.5
+    X_max::T = 0.5
+    L::T = X_max - X_min
+    V_min::T = -1.0
+    V_max::T = 1.0
+    η::T = V_max - V_min
     Nx::Integer
     Nv::Integer
     Nt::Integer
-    dt::Float64 = 0.04
-    dx::Float64 = L/Nx
-    dv::Float64 = L/Nx
-    G::Float64
-    grid::Matrix{Float64}
-    ρ::Vector{Float64} = integrate_lattice(grid,dv)
-    mass::Float64 = sum(ρ)*dx
-    Φ::Vector{Float64} = solve_f(ρ.-mass/Nx,L,4*π*G)
-    a::Vector{Float64} = num_diff(Φ,1,5,dx)
+    dt::T = 0.04
+    dx::T = L/Nx
+    dv::T = η/Nx
+    G::T
+    grid::Matrix{T}
+    phaseTemp::Matrix{T} = zero(grid)
+    ρ::Vector{T} = integrate_lattice(grid,dv)
+    mass::T = sum(ρ)*dx
+    Φ::Vector{T} = solve_f(ρ.- mass/Nx, L ,4*π*G)
+    a::Vector{T} = -num_diff(Φ,1,5,dx)
 end
 
 
 "Velocity initial conditions"
-vel(i,V_min=-1.0, dv = 2/1023) = V_min + (1.0*(i-1))*dv
-#vel_i(i,V_min=v_min, dv = dv) = vel(i,V_min=v_min, dv = dv)
-
+function vel(i;V_min::Float64=-1.0, dv::Float64 = 2/1023)
+    V_min + (1.0*(i-1))*dv
+end
+# vel_i(i,V_min=sim.v_min, dv = sim.dv)
 "Drift"
 function rotate_pos!(arr::Matrix{Float64},v_0::Vector{Float64})
     for i in 1:size(arr)[1]
@@ -108,12 +111,53 @@ function rotate_pos!(arr::Matrix{Float64},v_0::Vector{Float64})
     nothing
 end
 
-function calculate_new_pos(i,j)
-
+function calculate_new_pos(i::Integer,j::Integer,sim::Lattice)
+    # new_i = zero(i)
+    # new_j = zero(j)
+    Δj = Int(round(sim.a[i]*sim.dt/sim.dv))
+    new_j = j + Δj
+    if new_j < 1 || new_j > sim.Nv
+        # @show i, j, new_j, Int(round(sim.a[i]*sim.dt/sim.dv))
+        return -oneunit(new_j), -oneunit(new_j)
+    end
+    new_i = i + Int(round(vel(new_j;V_min=sim.V_min,dv=sim.dv)*sim.dt/sim.dx))
+    mod(new_i-1,sim.Nx)+1, new_j
+    # return new_i,new_j
 end
 
-function kick()
-    
+function streamingStep!(sim::Lattice)
+    phaseTemp = zeros(typeof(sim.grid[1,1]),sim.Nv,sim.Nx)
+    for i in 1:size(sim.grid,2)
+        for j in 1:size(sim.grid,1)
+            new_i, new_j = calculate_new_pos(i,j,sim)
+            if new_j < 1 || new_j > sim.Nv
+                continue
+            end
+            phaseTemp[new_j,new_i] += sim.grid[j,i]
+        end
+    end
+    sim.grid = phaseTemp
+    nothing
+end
+
+function streamingStepB!(sim::Lattice)
+    for i in 1:size(sim.grid,2)
+        for j in 1:size(sim.grid,1)
+            new_i, new_j = calculate_new_pos(i,j,sim)
+            if new_j < 1 || new_j > sim.Nv
+                continue
+            end
+            sim.phaseTemp[new_j,new_i] += sim.grid[j,i]
+        end
+    end
+
+    for i in 1:size(sim.grid,2)
+        for j in 1:size(sim.grid,1)
+            phase[i][j] = phaseTemp[i][j];
+			phaseTemp[i][j] = 0;
+        end
+    end
+    sim.grid = phaseTemp
     nothing
 end
 
@@ -128,6 +172,16 @@ end
 #
 
 "Time evolves the simulation sim.Nt number of steps."
+function integrate_steps(sim::Lattice)
+    for i in 1:sim.Nt
+        integrate_lattice!(sim.ρ, sim.grid, sim.dv)
+        sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*sim.G)
+        sim.a = -num_diff(sim.Φ,1,5,sim.dx)
+        streamingStep!(sim)
+    end
+    nothing
+end
+
 function integrate_steps(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64})
     for i in 1:sim.Nt
         integrate_lattice!(sim.ρ, sim.grid, sim.dv)
@@ -140,7 +194,18 @@ function integrate_steps(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64
 end
 
 "Runs the simulations"
+function simulate!(sim::Lattice; t0::Float64 = 0.0)
+    integrate_steps(sim)
+    sim.Nt * sim.dt + t0
+end
+
+"Runs the simulations"
 function simulate!(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64}; t0::Float64 = 0)
     integrate_steps(sim::Lattice, x_0::Vector{Float64}, v_0::Vector{Float64})
     sim.Nt * sim.dt + t0
+end
+
+"Goes from linear index to j,i"
+function index2ji(index::Integer,velocitySize::Integer)
+    index ÷ velocitySize + 1, mod(index-1,velocitySize)+1
 end
