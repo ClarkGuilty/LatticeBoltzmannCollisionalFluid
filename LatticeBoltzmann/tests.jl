@@ -58,7 +58,7 @@ heatmap(sim.grid,aspect_ratio=:equal,origin=:upper)
 #                 #grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
 #                 grid = gaussian_2d.(x_0',v_0))
 sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = 1,
-                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.5,
+                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.05,
                 grid = bullet_cluster.(x_0',v_0;x0=-0.2,x1=0.2,σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=10))
 
 @time anim = @animate for i in 1:200
