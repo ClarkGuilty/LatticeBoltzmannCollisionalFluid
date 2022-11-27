@@ -1,7 +1,7 @@
-include("ParallelLatticeBoltzmann.jl")
-using JET
+# include("ParallelLatticeBoltzmann.jl")
+# using JET
 using MPI
-Plots.default(aspect_ratio=:equal,fmt=:png) 
+# Plots.default(aspect_ratio=:equal,fmt=:png) 
 ##
 MPI.Init()
 
@@ -15,71 +15,84 @@ comm = MPI.COMM_WORLD
 # topologyGrid = reshape(1:nworkers,tuple(dims...))
 ##
 
-struct topology
+"Structure holding the home-made process Topology"
+struct Topology
     rank::Int64
     nworkers::Int64
     dims::Vector{Int64}
     graph::Matrix{Int64}
 end
 
-function topology(comm::MPI.Comm)
+"Constructor of a topology from a MPI.Comm"
+function Topology(comm::MPI.Comm)
     rank = MPI.Comm_rank(comm)
     nworkers = MPI.Comm_size(comm)
     dims = [0,0]
     MPI.Dims_create!(nworkers,2,dims)
-    topology(rank,nworkers,dims,collect(reshape(1:nworkers,tuple(dims...))))
+    Topology(rank,nworkers,dims,collect(reshape(0:nworkers-1,tuple(dims...))))
 end
 
-mpiTopology = topology(comm)
+"Returns the position of a process inside the topology given its rank."
+position(rank::Int64, topo::Topology)::Int64 = topo.graph[rank]
+"Returns the position in the Topology of the process calling it."
+position(topo::Topology)::Int64 = topo.graph[topo.rank]
 
+"Gives the rank of the process N processes to the left(-shift) or to the right(+shift) of the reference rank."
+leftright(rank::Int64, shift::Int64, topo::Topology) = topo.graph[mod(rank+shift*topo.dims[1],*(topo.dims...))+1]
+"Gives the rank of the process N processes to the left(-shift) or to the right(+shift) of the process calling it."
+leftright(shift::Int64, topo::Topology) = leftright(topo.rank, shift::Int64, topo::Topology)
+"Returns the number of processes up of the given rank."
+numberup(rank::Int64,topo::Topology) = mod(rank,topo.dims[1])
+numberup(topo::Topology) = numberup(topo.rank,topo::Topology)
+"Returns the number of processes down of the given rank."
+numberdown(rank::Int64,topo::Topology) = topo.dims[1] - numberup(rank,topo) -1
+numberdown(topo::Topology) = numberdown(topo.rank,topo)
+
+down(rank::Int64, shift::Int64,topo::Topology) = topo.graph[rank+shift+1]
+up(rank::Int64, shift::Int64,topo::Topology) = topo.graph[rank-shift+1]
+"Gives the rank of the process N processes up(-shift) or down(+shift) of the process calling it. Fails when out of bounds"
+function updown(rank::Int64, shift::Int64,topo::Topology)
+    if shift > 0 
+        if numberdown(rank,topo) < shift
+            throw(DomainError(topo, "There is no process $shift-down from $rank"))
+        else
+            return down(rank,shift,topo)
+        end
+    elseif shift < 0
+        shift = abs(shift)
+        if numberup(rank,topo) < shift
+            throw(DomainError(topo, "There is no process $shift-up from $rank"))
+        else
+            return up(rank,shift,topo)
+        end
+    end
+end
+function updown(shift::Int64,topo::Topology)
+    updown(topo.rank,shift,topo)
+end
+
+topo = Topology(comm)
+@show topo.graph
+# @show topo = topo
+@show topo.rank, leftright(topo.rank,1,topo)
+@show topo.rank, leftright(topo.rank,-1,topo)
+@show topo.rank, updown(topo.rank,1,topo)
+@show topo.rank, updown(topo.rank,-1,topo)
+
+a
 ##
-#Global init. TODO: update this into args with defaults.
-# N = 1024
-# Nx = N
-# Nv = N
-# Nt = 100
-# v_min = -1.0
-# v_max = 1.0
-# x_min = -0.5
-# x_max = 0.5
-# lv = v_max - v_min
-# lx = x_max - x_min
-# dv = lv / (Nv)
-# dx = lx / (Nx)
-# dt = 0.2 * dx/dv
-# G = 0.05
+dims = [6,3]
+testTopo = Topology(3,18,dims,collect(reshape(0:18-1,tuple(dims...))))
+testTopo.graph
+leftright(-1,testTopo)
+leftright(1,testTopo)
 
-# ##Local init
-# v_0 = Float64.(LinRange(v_min,v_max,Nv+1)[1:end-1])
-# x_0 = Float64.(LinRange(x_min,x_max,Nx+1)[1:end-1])
-# ##
-
-##
-
-# if rank==0
-#     Nrank = (N-oneunit(N) % nworkers)
-#     indexinitial = 1
-#     indexfinal = Nrank
-#     x = x_0[indexinitial:indexfinal]
-#     v = v_0[indexinitial:indexfinal]
-#     localV_min = v[1]
-
-# end
-# localsim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = 1,
-#     dt = dt, V_min=v_min, V_max=v_max, G = G,
-#     grid = gaussian_2d.(x_0',v_0,σx=0.2))
+numberup(18,testTopo)
+numberdown(12,testTopo)
 
 
+# down(5,2,testTopo)
+updown(1,-1,testTopo)
+# pos = 2
 
-##
-# sim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = 1,
-#                 dt = 0.1, V_min=v_min, V_max=v_max, G = 0.05,
-#                 # grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
-#                 grid = gaussian_2d.(x_0',v_0))
-                # grid = bullet_cluster.(x_0',v_0;x0=-0.2,x1=0.2,σv1=0.08,σv2=0.08,σx1=0.08,σx2=0.08,A1=10,A2=10))
-# #
-# @time anim = @animate for i in 1:20
-#     heatmap(sim.grid)
-#     simulate!(sim)
-# end every 2
-# gif(anim, "/tmp/anim_fps15.gif", fps = 1)
+a

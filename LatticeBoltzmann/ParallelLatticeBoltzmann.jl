@@ -2,7 +2,8 @@
 
 using FFTW
 using Statistics: mean
-using Plots, StatsPlots
+using Plots
+using StatsPlots
 using FiniteDifferences: central_fdm
 using Interpolations
 using ForwardDiff: gradient
