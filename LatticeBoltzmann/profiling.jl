@@ -15,12 +15,12 @@ dv = lv / (Nv)
 dx = lx / (Nx)
 dt = 0.1 * dx/dv
 # dt = 0.2
-G = 1.0
+G = 0.05
 v_0 = Float64.(LinRange(v_min,v_max,Nv+1)[1:end-1])
 x_0 = Float64.(LinRange(x_min,x_max,Nx+1)[1:end-1])
 ##
-sim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = 5,
-                dt = 0.1, V_min=v_min, V_max=v_max, G = 0.05,
+sim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = Nt,
+                dt = dt, V_min=v_min, V_max=v_max, G = G,
                 #grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
                 grid = gaussian_2d.(x_0',v_0))
 #
