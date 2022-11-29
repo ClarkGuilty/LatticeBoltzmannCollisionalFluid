@@ -98,7 +98,7 @@ function distributePhaseSpace(Nx,Nv,dims)
 end
 
 "Returns the corresponding rank and local indexes (j,i) of lattice position (globalj,globali)."
-function globalji2rankji(globalj, globali,simTopo::SimulationTopology)
+function globalji2rankji(globalj::Int64, globali::Int64,simTopo::SimulationTopology)
     if globalj > +(simTopo.vdims...) || globali > +(simTopo.xdims...)
         throw(ArgumentError("[$globalj, $globali] is outside the grid."))
     end
@@ -109,15 +109,54 @@ function globalji2rankji(globalj, globali,simTopo::SimulationTopology)
     simTopo.topo.graph[v+1,x+1], (globalj - sum(simTopo.vdims[1:v]), globali - sum(simTopo.xdims[1:x]))
 end
 
-"Returns the global indexes corresponding to the local indexes."
-function localji2globalji(localj,locali,rank,simTopo::SimulationTopology)
-    if localj > simTopo.graphofdims[rank+1][1] || locali > simTopo.graphofdims[rank+1][2]
+"""
+    localji2globalji(localj::Int64, locali::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::bool = false)
+
+Returns the global indexes corresponding to the local indexes.
+"""
+function localji2globalji(localj::Int64, locali::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::Bool = false)
+    if checklocalbounds && (localj > simTopo.graphofdims[rank+1][1] || locali > simTopo.graphofdims[rank+1][2])
         throw(DomainError(simTopo.graphofdims[rank+1], "Rank $rank has dims $(simTopo.graphofdims[rank+1]).") )
     end
     localj +(simTopo.vdims[1:numberup(rank,simTopo.topo)]...), locali +(simTopo.xdims[1:numberleft(rank,simTopo.topo)]...)
 end
-localji2globalji(localj,locali,simTopo::SimulationTopology) = localji2globalji(localj,locali,simTopo.topo.rank,simTopo::SimulationTopology)
+localji2globalji(localj::Int64,locali::Int64,simTopo::SimulationTopology) = localji2globalji(localj,locali,simTopo.topo.rank,simTopo)
 
+
+"""
+    localj2globalj(localj::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::bool = false)
+
+Returns the global j index corresponding to the local j index.
+
+"""
+function localj2globalj(localj::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::Bool = false)
+    if checklocalbounds && (localj > simTopo.graphofdims[rank+1][1] )
+        throw(DomainError(simTopo.graphofdims[rank+1], "Rank $rank has dims $(simTopo.graphofdims[rank+1]).") )
+    end
+    localj +(simTopo.vdims[1:numberup(rank,simTopo.topo)]...)
+end
+localj2globalj(localj::Int64,simTopo::SimulationTopology) = localj2globalj(localj,simTopo.topo.rank,simTopo; checklocalbounds = false)
+
+
+"""
+    locali2globali(locali::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::Bool = false)
+
+Returns the global i index corresponding to the local i index.
+"""
+function locali2globali(locali::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::Bool = false)
+    if checklocalbounds && (locali > simTopo.graphofdims[rank+1][2] )
+        throw(DomainError(simTopo.graphofdims[rank+1], "Rank $rank has dims $(simTopo.graphofdims[rank+1]).") )
+    end
+    locali +(simTopo.xdims[1:numberleft(rank,simTopo.topo)]...)
+end
+locali2globali(locali::Int64,simTopo::SimulationTopology) = locali2globali(locali,simTopo.topo.rank,simTopo; checklocalbounds = false)
+
+
+"""
+    initji(rank,simTopo::SimulationTopology)
+
+Returns the initial j and i in the global grid of the given rank.
+"""
 function initji(rank,simTopo::SimulationTopology)
     if rank >= simTopo.topo.nworkers
         throw(DomainError(rank, "There are only $(simTopo.topo.nworkers) processes.") )
@@ -126,11 +165,18 @@ function initji(rank,simTopo::SimulationTopology)
 end
 initji(simTopo::SimulationTopology) = initji(simTopo.topo.rank,simTopo::SimulationTopology)
 
+"""
+    rangeji(rank,simTopo::SimulationTopology)
+
+Returns two tuples containing the limit j and i of the given rank in the global grid.
+"""
 function rangeji(rank,simTopo::SimulationTopology)
     inits = initji(rank,simTopo)
-    deltas = simTopo.graphofdims[rank]
+    deltas = simTopo.graphofdims[rank+1]
     (inits[1], inits[1] + deltas[1]-1) , (inits[2], inits[2] + deltas[2]-1)
 end
+
+# rangeji(2,simTopo)
 
 tuple2range(tup::Tuple{Int64,Int64}) = tup[1]:tup[2]
 

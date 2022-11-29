@@ -81,7 +81,7 @@ sim = Lattice(X_min = x_min, X_max = x_max, Nx = N, Nv = N, Nt = 1,
 
 
 
-@time anim = @animate for i in 1:100
+@time anim = @animate for i in 1:2
     heatmap(sim.grid)
     simulate!(sim,Float64.(x_0),Float64.(v_0);t0=zero(1.0))
 end every 2
