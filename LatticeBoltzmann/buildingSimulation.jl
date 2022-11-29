@@ -1,4 +1,3 @@
-include("ParallelSugar.jl")
 include("ParallelLatticeBoltzmann.jl")
 include("ParallelLatticeUtilities.jl")
 ##
@@ -28,20 +27,19 @@ const lx::Float64 = x_max - x_min
 const dv::Float64 = lv / (Nv)
 const dx::Float64 = lx / (Nx)
 const dt::Float64 = 0.1 * dx/dv
-# dt = 0.2
 const G::Float64 = 0.05
 v_0 = Float64.(LinRange(v_min,v_max,Nv+1)[1:end-1])
 x_0 = Float64.(LinRange(x_min,x_max,Nx+1)[1:end-1])
 
 
 ##
-# rank = 5
-# nworkers=6
-# dims=[0,0]
-# MPI.Dims_create!(nworkers,length(dims),dims)
-# testTopo = Topology(rank,nworkers,dims,collect(reshape(0:nworkers-1,tuple(dims...))))
-# testTopo.graph
-
+rank = 5
+nworkers=6
+dims=[0,0]
+MPI.Dims_create!(nworkers,length(dims),dims)
+testTopo = Topology(rank,nworkers,dims,collect(reshape(0:nworkers-1,tuple(dims...))))
+testTopo.graph
+##
 
 testTopo = Topology(comm)
 # @show testTopo.nworkers
@@ -58,8 +56,14 @@ v_local = v_0[initji(simTopo)[1]:initji(simTopo)[1]+simTopo.graphofdims[simTopo.
 localLattice = ParallelLattice(X_min = x_local[1], X_max = x_local[end],L=lx,V_min = v_local[1], V_max = v_local[end],
                 Nx = N, Nv = N, ΔNx = simTopo.graphofdims[simTopo.topo.rank+1][2],
                 ΔNv = simTopo.graphofdims[simTopo.topo.rank+1][1], Nt = Nt, dx = dx, dv = dv,
-                dt = dt, G = G, grid = gaussian_2d.(x_local',v_local))
+                dt = dt, G = G, grid = gaussian_2d.(x_local',v_local),
+                recvMessages = [GridMessage([],i,simTopo.topo.rank,[]) for i in 0:simTopo.topo.nworkers-1 ],
+                sendMessages = [GridMessage([],i,simTopo.topo.rank,[]) for i in 0:simTopo.topo.nworkers-1 ])
 #
+if simTopo.topo.rank == 0
+    localLattice.a = sim.a
+end
+
 
 localj=1
 globalj = localj2globalj(localj,simTopo)
@@ -67,13 +71,35 @@ globalj = localj2globalj(localj,simTopo)
 
 
 ##
-MPI.Bcast!(localLattice.a, 0, comm)
-integrate_lattice!(localLattice.ρ, localLattice.grid, localLattice.dv)
+# MPI.Bcast!(localLattice.a, 0, comm)
+# integrate_lattice!(localLattice.ρ, localLattice.grid, localLattice.dv)
 
-if simTopo.topo.rank == 0
-    localLattice.a = sim.a
-end
 
 # syncronizedensity(localLattice, sim, simTopo,comm)
+
+parallelCalculate_new_pos!(10,11,localLattice, simTopo)
+new_globalji = tuple2vector(localji2globalji(localLattice.new_localji[1],localLattice.new_localji[2] ,simTopo))
+localji2globaljivect(123,-120 ,simTopo)
+rank, localLattice.new_localji = globalji2rankjivect(new_globalji[1]+12,new_globalji[2],simTopo)
+
+localLattice.new_localji
+temp[2]
+localLattice.new_localji
+localLattice.new_globalji
+localLattice.new_tempji
+localLattice.new_target
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

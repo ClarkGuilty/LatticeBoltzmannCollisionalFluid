@@ -109,6 +109,18 @@ function globalji2rankji(globalj::Int64, globali::Int64,simTopo::SimulationTopol
     simTopo.topo.graph[v+1,x+1], (globalj - sum(simTopo.vdims[1:v]), globali - sum(simTopo.xdims[1:x]))
 end
 
+"Returns the corresponding rank and local indexes (j,i) of lattice position (globalj,globali)."
+function globalji2rankjivect(globalj::Int64, globali::Int64,simTopo::SimulationTopology)
+    if globalj > +(simTopo.vdims...) || globali > +(simTopo.xdims...)
+        throw(ArgumentError("[$globalj, $globali] is outside the grid."))
+    end
+    globali ÷ length(simTopo.xdims)
+    x = (globali-1) ÷ simTopo.xdims[1]
+    v = (globalj-1) ÷ simTopo.vdims[1]
+    simTopo.topo.graph[v+1,x+1]
+    simTopo.topo.graph[v+1,x+1], Int64.([globalj - sum(simTopo.vdims[1:v]), globali - sum(simTopo.xdims[1:x])])
+end
+
 """
     localji2globalji(localj::Int64, locali::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::bool = false)
 
@@ -121,6 +133,14 @@ function localji2globalji(localj::Int64, locali::Int64, rank::Int64, simTopo::Si
     localj +(simTopo.vdims[1:numberup(rank,simTopo.topo)]...), locali +(simTopo.xdims[1:numberleft(rank,simTopo.topo)]...)
 end
 localji2globalji(localj::Int64,locali::Int64,simTopo::SimulationTopology) = localji2globalji(localj,locali,simTopo.topo.rank,simTopo)
+
+function localji2globaljivect(localj::Int64, locali::Int64, rank::Int64, simTopo::SimulationTopology; checklocalbounds::Bool = false)
+    if checklocalbounds && (localj > simTopo.graphofdims[rank+1][1] || locali > simTopo.graphofdims[rank+1][2])
+        throw(DomainError(simTopo.graphofdims[rank+1], "Rank $rank has dims $(simTopo.graphofdims[rank+1]).") )
+    end
+    Int64.([localj+(simTopo.vdims[1:numberup(rank,simTopo.topo)]...),locali+(simTopo.xdims[1:numberleft(rank,simTopo.topo)]...)])
+end
+localji2globaljivect(localj::Int64,locali::Int64,simTopo::SimulationTopology) = localji2globaljivect(localj,locali,simTopo.topo.rank,simTopo)
 
 
 """
@@ -179,6 +199,7 @@ end
 # rangeji(2,simTopo)
 
 tuple2range(tup::Tuple{Int64,Int64}) = tup[1]:tup[2]
+tuple2vector(tup) = Int.([tup[1],tup[2]])
 
 # initji(3,simTopo)
 # simTopo.graphofdims[3]

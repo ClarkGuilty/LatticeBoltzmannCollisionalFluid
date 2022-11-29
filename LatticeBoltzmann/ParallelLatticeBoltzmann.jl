@@ -9,6 +9,8 @@ using DiffEqOperators
 # using Parameters
 # using BenchmarkTools
 
+include("ParallelSugar.jl")
+
 # Base.IndexStyle(::Type{<:Matrix}) = IndexLinear()
 # Base.IndexStyle(::Type{<:Matrix}) = IndexCartesian()
 
@@ -37,6 +39,13 @@ function integrate_lattice!(density::Vector{Float64}, grid::Matrix{Float64}, dv:
         density[i] *= dv
     end
     nothing
+end
+
+struct GridMessage
+    worldji::Vector{Vector{Int64}}
+    targetrank::Int64
+    originrank::Int64
+    values::Vector{Float64}
 end
 
 Base.@kwdef mutable struct Lattice{T <: AbstractFloat}
@@ -82,10 +91,16 @@ Base.@kwdef mutable struct ParallelLattice{T <: AbstractFloat}
     grid::Matrix{T}
     phaseTemp::Matrix{T} = zeros(Float64,ΔNv,ΔNx)
     new_localji::Vector{Int64} = zeros(Int64,2)
+    new_tempji::Vector{Int64} = zeros(Int64,2)
     new_globalji::Vector{Int64} = zeros(Int64,2)
+    new_target::Int64 = -1
+    pixel_value::T = zero(Float64)
     ρ::Vector{T} = integrate_lattice(grid,dv)
     a::Vector{T} = zeros(Float64,Nx)
+    recvMessages::Vector{GridMessage} = []
+    sendMessages::Vector{GridMessage} = []
 end
+
 
 
 """
@@ -151,6 +166,11 @@ end
 # vel_i(i,V_min=sim.v_min, dv = sim.dv)
 
 
+"""
+    calculate_new_pos!(i::Int64,j::Int64,sim::Lattice)::Bool
+
+TBW
+"""
 function calculate_new_pos!(i::Int64,j::Int64,sim::Lattice)::Bool
     sim.new_ji[1] = j + Int(round(sim.a[i]*sim.dt/sim.dv))
     if !(oneunit(Int64) < sim.new_ji[1] < sim.Nv)
@@ -161,20 +181,11 @@ function calculate_new_pos!(i::Int64,j::Int64,sim::Lattice)::Bool
     true
 end
 
-function streamingStep!(sim::Lattice)
-    phaseTemp = zeros(Float64,sim.Nv,sim.Nx)
-    for i in 1:size(sim.grid,2)
-        for j in 1:size(sim.grid,1)
-            if !calculate_new_pos!(i,j,sim)
-                continue
-            end
-            phaseTemp[sim.new_ji[1],sim.new_ji[2]] += sim.grid[j,i]
-        end
-    end
-    sim.grid = phaseTemp
-    nothing
-end
+"""
+    streamingStep!!(sim::Lattice)
 
+TBW
+"""
 function streamingStep!!(sim::Lattice)
     for i in 1:size(sim.grid,2)
         for j in 1:size(sim.grid,1)
@@ -217,17 +228,38 @@ end
 
 TBW
 """
-function parallelCalculate_new_pos!(i::Int64,j::Int64,localLattice::ParallelLattice, simTopo::SimulationTopology)::Bool
-    localLattice.new_localji[1] = j + Int(round(
+function parallelCalculate_new_pos!(j::Int64,i::Int64,localLattice::ParallelLattice, simTopo::SimulationTopology)::Bool
+    localLattice.new_tempji[1] = j + Int(round(
         localLattice.a[locali2globali(i,simTopo)]*localLattice.dt/localLattice.dv))
-    
-    if !(oneunit(Int64) < localj2globalj(localLattice.new_ji[1],simTopo) < localLattice.Nv)
+    localLattice.new_globalji[1] = localj2globalj(localLattice.new_tempji[1],simTopo)
+    if !(oneunit(Int64) < localLattice.new_globalji[1] < localLattice.Nv)
         return false
     end
     # new_i = i + Int(round(vel(new_j;V_min=sim.V_min,dv=sim.dv)*sim.dt/sim.dx))
-    localLattice.new_localji[2] = mod(i + Int(round(vel(
-        localLattice.new_ji[1];V_min=localLattice.V_min,dv=localLattice.dv)*localLattice.dt/localLattice.dx))-oneunit(i),localLattice.Nx)+oneunit(i)
+    localLattice.new_globalji[2] = mod(i + Int(round(vel(
+        localLattice.new_tempji[1];V_min=localLattice.V_min,dv=localLattice.dv)*localLattice.dt/localLattice.dx))-oneunit(i),localLattice.Nx)+oneunit(i)
     true
+end
+
+"""
+    updatenewlocaljl!(localLattice::ParallelLattice,simTopo::SimulationTopology)
+
+Loads the new_localji using new_globalji. Returns the rank of the process for which that pixel is local.
+"""
+function updatenewlocaljl!(localLattice::ParallelLattice,simTopo::SimulationTopology)::Int64
+    rank, localLattice.new_localji = globalji2rankjivect(localLattice.new_globalji[1],localLattice.new_globalji[2],simTopo)
+    rank
+end 
+
+
+function updateormessage!(j::Int64,i::Int64,targetrank::Int64, localLattice::ParallelLattice,simTopo::SimulationTopology)
+    if targetrank == simTopo.topo.rank
+        localLattice.phaseTemp[localLattice.new_localji[1],localLattice.new_localji[2]] += localLattice.grid[j,i]
+    else
+        push!(localLattice.sendMessages[targetrank+1].worldji,localLattice.new_globalji)
+        push!(localLattice.sendMessages[targetrank+1].values,localLattice.pixel_value)
+    end
+    nothing
 end
 
 """
@@ -235,24 +267,35 @@ end
 
 TBW
 """
-function parallel_streamingStep!!(sim::Lattice)
-    for i in 1:size(sim.grid,2)
-        for j in 1:size(sim.grid,1)
-            if !calculate_new_pos!(i,j,sim)
+function parallel_streamingStep!!(localLattice::ParallelLattice,simTopo::SimulationTopology)
+    for i in 1:size(localLattice.grid,2)
+        for j in 1:size(localLattice.grid,1)
+            if !parallelCalculate_new_pos!(j,i,localLattice,simTopo)
                 continue
             end
-            sim.phaseTemp[sim.new_ji[1],sim.new_ji[2]] += sim.grid[j,i]
-        end
-    end
-
-    for i in 1:size(sim.grid,2)
-        for j in 1:size(sim.grid,1)
-            sim.grid[j,i] = sim.phaseTemp[j,i]
-            sim.phaseTemp[j,i] = 0.0
-
+            updateormessage!(j,i,updatenewlocaljl!(localLattice,simTopo),localLattice,simTopo)
         end
     end
     nothing
+end
+
+
+function sendandreceiveGridUpdates()
+    
+end
+
+"""
+    imprint_streamingStep!(sim::Lattice)
+
+Should always be executed after an streamingStep. It moves the data from phaseTemp to grid.
+"""
+function imprint_streamingStep!(sim::Lattice)
+    for i in 1:size(sim.grid,2)
+        for j in 1:size(sim.grid,1)
+            sim.grid[j,i] = sim.phaseTemp[j,i]
+            sim.phaseTemp[j,i] = zero(sim.phaseTemp[1,1])
+        end
+    end
 end
 
 """
@@ -269,8 +312,6 @@ function parallelIntegrate_steps(localLattice::ParallelLattice,sim::Union{Lattic
         sim.a = -num_diff(sim.Φ,1,5,sim.dx) #parallel version
         MPI.Bcast!(localLattice.a, 0, comm)
         parallelStreamingStep!!(sim)
-
-
     end
     nothing
 end
