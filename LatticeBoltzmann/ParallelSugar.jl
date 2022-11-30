@@ -6,6 +6,7 @@ struct Topology
     nworkers::Int64
     dims::Vector{Int64}
     graph::Matrix{Int64}
+    otherworkers::Vector{Int64}
 end
 
 "Constructor of a topology from a MPI.Comm"
@@ -14,7 +15,8 @@ function Topology(comm::MPI.Comm)
     nworkers = MPI.Comm_size(comm)
     dims = [0,0]
     MPI.Dims_create!(nworkers,2,dims)
-    Topology(rank,nworkers,dims,collect(reshape(0:nworkers-1,tuple(dims...))))
+    otherworkers = collect(0:nworkers-1)[0:nworkers-1 .!= rank]
+    Topology(rank,nworkers,dims,collect(reshape(0:nworkers-1,tuple(dims...))), otherworkers)
 end
 
 "Returns the position of a process inside the topology given its rank."

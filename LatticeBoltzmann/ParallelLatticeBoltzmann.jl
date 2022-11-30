@@ -6,6 +6,8 @@ using FiniteDifferences: central_fdm
 using Interpolations
 using ForwardDiff: gradient
 using DiffEqOperators
+using StaticArrays
+
 # using Parameters
 # using BenchmarkTools
 
@@ -41,12 +43,34 @@ function integrate_lattice!(density::Vector{Float64}, grid::Matrix{Float64}, dv:
     nothing
 end
 
+
 struct GridMessage
-    worldji::Vector{Vector{Int64}}
+    worldj::Vector{Int64}
+    worldi::Vector{Int64}
     targetrank::Int64
     originrank::Int64
     values::Vector{Float64}
 end
+
+
+struct ActualMessage{N2}
+    worldj::SVector{N2,Int64}
+    worldi::SVector{N2,Int64}
+    values::SVector{N2,Float64}
+    len::Int64
+    originrank::Int64
+end
+
+function preparemessage(gridm::GridMessage)::ActualMessage
+    ele = length(gridm.worldj)
+    ActualMessage{N^2}(
+        SVector{N^2,Float64}( vcat(gridm.worldj , zeros(Int64,N^2-ele) )),
+        SVector{N^2,Float64}( vcat(gridm.worldi , zeros(Int64,N^2-ele) )),
+        SVector{N^2,Float64}( vcat(gridm.values , zeros(Float64,N^2-ele) )),
+        ele,localLattice.sendMessages[2].originrank)
+end
+
+
 
 Base.@kwdef mutable struct Lattice{T <: AbstractFloat}
     const X_min::T = -0.5
@@ -71,7 +95,7 @@ Base.@kwdef mutable struct Lattice{T <: AbstractFloat}
     a::Vector{T} = -num_diff(Φ,1,5,dx)
 end
 
-Base.@kwdef mutable struct ParallelLattice{T <: AbstractFloat}
+Base.@kwdef mutable struct ParallelLattice{T <: AbstractFloat, N2}
     const X_min::T
     const X_max::T
     const L::T
@@ -97,11 +121,16 @@ Base.@kwdef mutable struct ParallelLattice{T <: AbstractFloat}
     pixel_value::T = zero(Float64)
     ρ::Vector{T} = integrate_lattice(grid,dv)
     a::Vector{T} = zeros(Float64,Nx)
-    recvMessages::Vector{GridMessage} = []
-    sendMessages::Vector{GridMessage} = []
+    # sendip::Matrix{Int64}
+    # sendjp::Matrix{Int64}
+    # sendvaluesp::Matrix{Int64}
+    sendMessages::Vector{GridMessage}
+    recvMessages::Vector{Vector{ActualMessage{N2}}}
 end
 
-
+function resetsendMessages(localLattice::ParallelLattice,simTopo::SimulationTopology)
+    localLattice.sendMessages = [GridMessage(Int64[],Int64[],i,simTopo.topo.rank,Int64[]) for i in 0:simTopo.topo.nworkers-1 ]
+end
 
 """
     gaussian(x, μ=0,σ=1, A=1)
@@ -229,6 +258,8 @@ end
 TBW
 """
 function parallelCalculate_new_pos!(j::Int64,i::Int64,localLattice::ParallelLattice, simTopo::SimulationTopology)::Bool
+    # localLattice.new_globalji[2] = 0
+    # localLattice.new_globalji[1] = 0
     localLattice.new_tempji[1] = j + Int(round(
         localLattice.a[locali2globali(i,simTopo)]*localLattice.dt/localLattice.dv))
     localLattice.new_globalji[1] = localj2globalj(localLattice.new_tempji[1],simTopo)
@@ -241,6 +272,7 @@ function parallelCalculate_new_pos!(j::Int64,i::Int64,localLattice::ParallelLatt
     true
 end
 
+
 """
     updatenewlocaljl!(localLattice::ParallelLattice,simTopo::SimulationTopology)
 
@@ -252,24 +284,34 @@ function updatenewlocaljl!(localLattice::ParallelLattice,simTopo::SimulationTopo
 end 
 
 
-function updateormessage!(j::Int64,i::Int64,targetrank::Int64, localLattice::ParallelLattice,simTopo::SimulationTopology)
+"""
+    updateormessage!(j::Int64,i::Int64,targetrank::Int64, llocalLattice::ParallelLattice,simTopo::SimulationTopology)
+
+Updates the local grid or adds the pixel to the message corresponding to the target process.
+"""
+function updateormessage!(j::Int64,i::Int64,targetrank::Int64, llocalLattice::ParallelLattice,simTopo::SimulationTopology)
     if targetrank == simTopo.topo.rank
-        localLattice.phaseTemp[localLattice.new_localji[1],localLattice.new_localji[2]] += localLattice.grid[j,i]
+    # if false
+        llocalLattice.phaseTemp[llocalLattice.new_localji[1],llocalLattice.new_localji[2]] += llocalLattice.grid[j,i]
     else
-        push!(localLattice.sendMessages[targetrank+1].worldji,localLattice.new_globalji)
-        push!(localLattice.sendMessages[targetrank+1].values,localLattice.pixel_value)
+        push!(llocalLattice.sendMessages[targetrank+1].worldj,llocalLattice.new_globalji[1])
+        push!(llocalLattice.sendMessages[targetrank+1].worldi,llocalLattice.new_globalji[2])
+        push!(llocalLattice.sendMessages[targetrank+1].values,llocalLattice.pixel_value)
     end
     nothing
 end
 
 """
-    parallel_streamingStep!!(sim::Lattice)
+    parallel_streamingStep!!(localLattice::ParallelLattice,simTopo::SimulationTopology)
 
-TBW
+Iterates over the local grid doing the streaming step. It update phaseTemp if the new pixel is in the same
+node, otherwise prepares a message to the correct node.
 """
 function parallel_streamingStep!!(localLattice::ParallelLattice,simTopo::SimulationTopology)
+    @show "im inside parallel_streamingStep!!"
     for i in 1:size(localLattice.grid,2)
         for j in 1:size(localLattice.grid,1)
+            # @show "($i,$j)"
             if !parallelCalculate_new_pos!(j,i,localLattice,simTopo)
                 continue
             end
@@ -280,22 +322,60 @@ function parallel_streamingStep!!(localLattice::ParallelLattice,simTopo::Simulat
 end
 
 
-function sendandreceiveGridUpdates()
-    
+function sendandreceiveGridUpdates(localLattice::ParallelLattice,simTopo::SimulationTopology, comm::MPI.Comm)
+    # sendMessages = Array{MPI.Request}(undef,simTopo.topo.nworkers)
+    # recvMessages = Array{MPI.Request}(undef,simTopo.topo.nworkers)
+    sendMessages = MPI.Request[]
+    recvMessages = MPI.Request[]
+    @show "I will send and recv from $(simTopo.topo.otherworkers)"
+    for target in simTopo.topo.otherworkers
+        push!(sendMessages, MPI.Isend(preparemessage(localLattice.sendMessages[target+1]), comm; dest=target, tag=1254))
+        push!(recvMessages, MPI.Irecv!(localLattice.recvMessages[target+1] , comm; source=target, tag=1254))
+    end
+    vcat(sendMessages, recvMessages)
 end
 
 """
-    imprint_streamingStep!(sim::Lattice)
+    imprint_streamingStep!(localLattice::ParallelLattice)
 
 Should always be executed after an streamingStep. It moves the data from phaseTemp to grid.
 """
-function imprint_streamingStep!(sim::Lattice)
-    for i in 1:size(sim.grid,2)
-        for j in 1:size(sim.grid,1)
-            sim.grid[j,i] = sim.phaseTemp[j,i]
-            sim.phaseTemp[j,i] = zero(sim.phaseTemp[1,1])
+function imprint_streamingStep!(localLattice::ParallelLattice)
+    for i in 1:size(localLattice.grid,2)
+        for j in 1:size(localLattice.grid,1)
+            localLattice.grid[j,i] = localLattice.phaseTemp[j,i]
+            localLattice.phaseTemp[j,i] = zero(Float64)
         end
     end
+end
+
+"""
+    addmessagestogrid(localLattice::ParallelLattice)
+
+Add the contribution from the other processes into the local grid.
+"""
+function addmessagestogrid(localLattice::ParallelLattice)
+    @show "I will start updating the grid"
+    for mes in localLattice.recvMessages
+        for k in 1:mes[1].len
+           localLattice.grid[mes[1].worldj[k],mes[1].worldi[k]] += mes[1].values[k]
+        end
+    end
+end
+
+"""
+    multinodeStreamingStep!(localLattice::ParallelLattice,simTopo::SimulationTopology)
+
+Does a MPI parallel streaming step. 
+"""
+function multinodeStreamingStep!(localLattice::ParallelLattice,simTopo::SimulationTopology,comm::MPI.Comm)
+    @show "im inside multinodeStreamingStep"
+    @show parallel_streamingStep!!(localLattice,simTopo)
+    reqs = sendandreceiveGridUpdates(localLattice,simTopo, comm)
+    @show imprint_streamingStep!(localLattice)
+    MPI.Waitall(reqs)
+    # @show addmessagestogrid(localLattice::ParallelLattice)
+    # resetsendMessages(localLattice,simTopo)
 end
 
 """
@@ -303,15 +383,16 @@ end
 
 Time evolves the simulation sim.Nt number of steps.
 """
-function parallelIntegrate_steps(localLattice::ParallelLattice,sim::Union{Lattice,Nothing})
-    for i in 1:sim.Nt
-        Integrate_lattice!(sim.ρ, sim.grid, sim.dv)
+function parallelIntegrate_steps(localLattice::ParallelLattice,sim::Union{Lattice,Nothing},simTopo::SimulationTopology)
+    for i in 1:localLattice.Nt
+        Integrate_lattice!(localLattice.ρ, localLattice.grid, localLattice.dv)
         syncronizedensity(localLattice, sim, simTopo,comm)
-
-        sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*sim.G) #parallel version
-        sim.a = -num_diff(sim.Φ,1,5,sim.dx) #parallel version
+        if simTopo.topo.rank == 0
+            sim.Φ = solve_f(sim.ρ .- mean(sim.ρ), sim.L, 4*π*sim.G) #parallel version
+            sim.a = -num_diff(sim.Φ,1,5,sim.dx) #parallel version
+        end
         MPI.Bcast!(localLattice.a, 0, comm)
-        parallelStreamingStep!!(sim)
+        multinodeStreamingStep!(sim)
     end
     nothing
 end
