@@ -6,7 +6,7 @@ function recvfromall(tag::Int64,simTopo::SimulationTopology,comm::MPI.Comm)
     sreqs_workers = Array{MPI.Request}(undef,simTopo.topo.nworkers-1)
     buffers = Vector{Vector{Float64}}(undef,simTopo.topo.nworkers-1)
     for rank in 1:simTopo.topo.nworkers-1
-        @show rank
+        # @show rank
         buffers[rank] = zeros(Float64,simTopo.graphofdims[rank+1][2])
         sreqs_workers[rank] = MPI.Irecv!(buffers[rank], comm; source=rank, tag=tag)
     end
@@ -35,7 +35,7 @@ function syncronizedensity(localLattice::ParallelLattice, sim::Union{Lattice,Not
             view(sim.ρ,tuple2range(rangeji(rank,simTopo)[2])) .+= buffer
         end
     
-        @show sum(sim.ρ.*dx)
+        # @show sum(sim.ρ.*dx)
     end
     nothing
 end

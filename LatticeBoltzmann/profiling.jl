@@ -2,10 +2,10 @@ include("LatticeBoltzmann.jl")
 using JET
 using BenchmarkTools
 ##
-N = 2048
+N = 1024
 Nx = N
 Nv = N
-Nt = 100
+Nt = 25
 v_min = -1.0
 v_max = 1.0
 x_min = -0.5
@@ -16,7 +16,7 @@ dv = lv / (Nv)
 dx = lx / (Nx)
 dt = 0.1 * dx/dv
 # dt = 0.2
-G = 0.05
+G = 0.1
 v_0 = Float64.(LinRange(v_min,v_max,Nv+1)[1:end-1])
 x_0 = Float64.(LinRange(x_min,x_max,Nx+1)[1:end-1])
 ##
@@ -25,12 +25,20 @@ sim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = Nt,
                 #grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
                 grid = gaussian_2d.(x_0',v_0))
 #
+ρ0 = copy(sim.ρ)
+plot(sim.ρ,title="Density")
+simulate!(sim)
+sum(ρ0 - sim.ρ)
+plot!(sim.ρ,title="Density")
+
+#
 heatmap(sim.grid,title="Base",aspect_ratio=:equal)
 plot!([sim.Nx/2,sim.Nx/2],[0,sim.Nv],color=:green)
 plot!([0,sim.Nx],[sim.Nv/2,sim.Nv/2],color=:green)
 ##
 @time simulatenaive!(sim)
 @time simulate!(sim)
+
 
 #
 heatmap(sim.grid,title="Base",aspect_ratio=:equal)

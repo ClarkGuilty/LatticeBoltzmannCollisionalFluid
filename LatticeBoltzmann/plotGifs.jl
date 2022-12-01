@@ -2,8 +2,8 @@ include("LatticeBoltzmann.jl")
 ##
 gr()
 #Initializing
-N = 2048
-Nt = 25
+N = 1024
+Nt = 1
 v_min = -1.0
 v_max = 1.0
 x_min = -0.5
@@ -13,7 +13,7 @@ lx = x_max - x_min
 dv = lv / (N)
 dx = lx / (N)
 dt = 0.1 * dx/dv
-dt = 0.2
+# dt = 0.2
 G = 1.0
 v_0 = Float64.(LinRange(v_min,v_max,N+1)[1:end-1])
 x_0 = Float64.(LinRange(x_min,x_max,N+1)[1:end-1])
@@ -38,8 +38,8 @@ k = 4 * π
 kj = sqrt(4 * π * G * ρ / σ^2)
 # k/kj
 
-jeans_init = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A)
-heatmap(jeans_init)
+# jeans_init = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A)
+# heatmap(jeans_init)
 ##
 # sum(sim.grid,dims=2)[:,1]*dv
 # @time integrate_lattice!(sim.ρ,sim.grid,sim.dv)

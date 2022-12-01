@@ -100,15 +100,31 @@ function distributePhaseSpace(Nx,Nv,dims)
 end
 
 "Returns the corresponding rank and local indexes (j,i) of lattice position (globalj,globali)."
-function globalji2rankji(globalj::Int64, globali::Int64,simTopo::SimulationTopology)
-    if globalj > +(simTopo.vdims...) || globali > +(simTopo.xdims...)
+function globalji2rankji(globalj::Int64, globali::Int64,simTopo::SimulationTopology; checklocalbounds::Bool = false)
+    if checklocalbounds && (globalj > +(simTopo.vdims...) || globali > +(simTopo.xdims...))
         throw(ArgumentError("[$globalj, $globali] is outside the grid."))
     end
     globali ÷ length(simTopo.xdims)
     x = (globali-1) ÷ simTopo.xdims[1]
     v = (globalj-1) ÷ simTopo.vdims[1]
-    simTopo.topo.graph[v+1,x+1]
+    # simTopo.topo.graph[v+1,x+1]
     simTopo.topo.graph[v+1,x+1], (globalj - sum(simTopo.vdims[1:v]), globali - sum(simTopo.xdims[1:x]))
+end
+
+"""
+    globalji2rankjinorank(globalj::Int64, globali::Int64,simTopo::SimulationTopology; checklocalbounds::Bool = false)
+
+Same as globalji2rankji but does not return the rank.
+"""
+function globalji2rankjinorank(globalj::Int64, globali::Int64,simTopo::SimulationTopology; checklocalbounds::Bool = false)
+    if checklocalbounds && (globalj > +(simTopo.vdims...) || globali > +(simTopo.xdims...))
+        throw(ArgumentError("[$globalj, $globali] is outside the grid."))
+    end
+    globali ÷ length(simTopo.xdims)
+    x = (globali-1) ÷ simTopo.xdims[1]
+    v = (globalj-1) ÷ simTopo.vdims[1]
+    # simTopo.topo.graph[v+1,x+1]
+    globalj - sum(simTopo.vdims[1:v]), globali - sum(simTopo.xdims[1:x])
 end
 
 "Returns the corresponding rank and local indexes (j,i) of lattice position (globalj,globali)."
@@ -119,7 +135,7 @@ function globalji2rankjivect(globalj::Int64, globali::Int64,simTopo::SimulationT
     globali ÷ length(simTopo.xdims)
     x = (globali-1) ÷ simTopo.xdims[1]
     v = (globalj-1) ÷ simTopo.vdims[1]
-    simTopo.topo.graph[v+1,x+1]
+    # simTopo.topo.graph[v+1,x+1]
     simTopo.topo.graph[v+1,x+1], Int64.([globalj - sum(simTopo.vdims[1:v]), globali - sum(simTopo.xdims[1:x])])
 end
 
