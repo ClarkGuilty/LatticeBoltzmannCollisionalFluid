@@ -14,10 +14,10 @@ comm = MPI.COMM_WORLD
     # true
 # end
 ##
-const N::Int64 = 1024
+const N::Int64 = 2048
 const Nx::Int64 = N
 const Nv::Int64 = N
-const Nt::Int64 = 25
+const Nt::Int64 = 100
 const v_min::Float64 = -1.0
 const v_max::Float64 = 1.0
 const x_min::Float64 = -0.5
@@ -83,10 +83,10 @@ end
 # @show localLattice,simTopo,comm
 # parallel_streamingStep!!(localLattice,simTopo)
 # multinodeStreamingStep!(localLattice,simTopo,comm)
-@profile parallelIntegrate_steps!(localLattice,sim,simTopo)
-# @time parallelIntegrate_steps!(localLattice,sim,simTopo)
+# @profile parallelIntegrate_steps!(localLattice,sim,simTopo)
+@time parallelIntegrate_steps!(localLattice,sim,simTopo)
 
-# ProfileSVG.save("prof"*string(simTopo.topo.rank)*".svg")
+# ProfileSVG.save("prof"*string(simTopo.topo.rank)*".svg";width=5000)
 # @show " im done $(simTopo.topo.rank)"
 
 # @benchmark(parallelIntegrate_steps!(localLattice,sim,simTopo),
