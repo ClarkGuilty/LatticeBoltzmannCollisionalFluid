@@ -224,3 +224,36 @@ tuple2vector(tup) = Int.([tup[1],tup[2]])
 
 
 
+"""
+    irecv(src::Integer, tag::Integer, comm::Comm)
+
+Based on the deprecated version of MPI but patched to work again.
+"""
+function irecv(source::Integer, tag::Integer, comm::MPI.Comm) 
+    flag, stat = MPI.Iprobe(comm, MPI.Status;source=source, tag=tag)
+    flag || return (false, nothing, nothing) 
+    count = MPI.Get_count(stat, UInt8) 
+    buf = Array{UInt8}(undef, count) 
+    MPI.Recv!(buf, comm; source=MPI.Get_source(stat), tag=MPI.Get_tag(stat)) 
+    (true, MPI.deserialize(buf), stat) 
+ end
+
+
+ MPI_Message::DataType = Cint
+ function irecv1(source::Integer, tag::Integer, comm::MPI.Comm) 
+    flag = Ref{Cint}()
+    mess = Ref{MPI.MPI_Message}()
+    status = Ref(MPI.STATUS_ZERO)
+    # status = Ref{MPI.Status}()
+    # @show "probing"
+    MPI.API.MPI_Improbe(source,tag,comm,flag,mess,status)
+    flag || return (false, nothing, nothing) 
+    @show "something arrived"
+    count = MPI.Get_count(status, UInt8) 
+    buf = Array{UInt8}(undef, count) 
+    @show buf
+    stat = MPI.Recv!(buf, comm, MPI.Status; source=MPI.Get_source(status), tag=MPI.Get_tag(status)) 
+    # stat = MPI.Recv!(buf, comm; source=MPI.Get_source(stat), tag=MPI.Get_tag(stat)) 
+    # @show buf
+    (true, MPI.deserialize(buf), stat) 
+ end

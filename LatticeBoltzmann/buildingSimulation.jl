@@ -1,18 +1,20 @@
 include("ParallelLatticeBoltzmann.jl")
 include("ParallelLatticeUtilities.jl")
 # using BenchmarkTools
-using Profile, ProfileSVG
+# using Profile, ProfileSVG
+# ProfileSVG.set_default(ProfileSVG.FlameColors(),bgcolor=:classic, fontcolor=:classic, yflip=true,timeunit=:s)
+
 ##
 const DENSITYTAG::Int64 = 3541
 const GRIDTAG::Int64 = 1254
 MPI.Init()
 comm = MPI.COMM_WORLD
-# if MPI.Comm_rank(comm) == 0
-    # import Plots
-    # Plots.gr()
-    # Plots.default(aspect_ratio=:equal,fmt=:png) 
-    # true
-# end
+if MPI.Comm_rank(comm) == 0
+    import Plots
+    Plots.gr()
+    Plots.default(aspect_ratio=:equal,fmt=:png) 
+    true
+end
 ##
 const N::Int64 = 2048
 const Nx::Int64 = N
@@ -33,15 +35,15 @@ x_0 = Float64.(LinRange(x_min,x_max,Nx+1)[1:end-1])
 
 
 ##
-# rank = 1
-# nworkers=6
+# rank = 0
+# nworkers=45
 # dims=[0,0]
 # MPI.Dims_create!(nworkers,length(dims),dims)
 # otherworkers = collect(0:nworkers-1)[0:nworkers-1 .!= rank]
 # testTopo = Topology(rank,nworkers,dims,collect(reshape(0:nworkers-1,tuple(dims...))),otherworkers)
 # testTopo.graph
 # testTopo.otherworkers
-#
+##
 testTopo = Topology(comm)
 simTopo = SimulationTopology(N,N,testTopo)
 
@@ -49,7 +51,21 @@ sim = simTopo.topo.rank == 0 ? Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv
     dt = dt, V_min=v_min, V_max=v_max, G = G,
     grid = gaussian_2d.(x_0',v_0)) : nothing
 #
-
+##
+# Plots.heatmap(sim.grid,colorbar=false)
+# for k in 0:nworkers-1
+# jrange,irange = rangeji(k,simTopo)
+# shap = Plots.Shape([
+#     (irange[1],jrange[1]),
+#     (irange[1],jrange[2]),
+#     (irange[2],jrange[2]),
+#     (irange[2],jrange[1])
+#     ])
+# Plots.plot!(shap, opacity=.1,color=:green,linealpha=1,linecolor=:green,legend=false)
+# end
+# Plots.title!("nworkers = $(nworkers)")
+# Plots.savefig("grid-$(nworkers).png")
+##
 # if simTopo.topo.rank == 0
 #     Plots.plot(sim.ρ,label="t=0")
 #     simulate!(sim)
@@ -83,9 +99,11 @@ end
 # @show localLattice,simTopo,comm
 # parallel_streamingStep!!(localLattice,simTopo)
 # multinodeStreamingStep!(localLattice,simTopo,comm)
-# @profile parallelIntegrate_steps!(localLattice,sim,simTopo)
+# @time parallelSimulate!(localLattice,sim,simTopo)
 @time parallelIntegrate_steps!(localLattice,sim,simTopo)
 
+localLattice.Nt
+# @profile parallelIntegrate_steps!(localLattice,sim,simTopo)
 # ProfileSVG.save("prof"*string(simTopo.topo.rank)*".svg";width=5000)
 # @show " im done $(simTopo.topo.rank)"
 

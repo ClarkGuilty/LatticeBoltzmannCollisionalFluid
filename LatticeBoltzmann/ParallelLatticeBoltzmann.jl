@@ -377,7 +377,7 @@ TBW
 """
 function receiveGridUpdates!(localLattice::ParallelLattice,simTopo::SimulationTopology,comm::MPI.Comm)
     for sender in simTopo.topo.otherworkers
-        localLattice.recvMessages[sender+1] = MPI.recv(comm;source=sender, tag=1254)
+        localLattice.recvMessages[sender+1] = MPI.recv(comm;source=sender, tag=1254)::GridMessage
     end
 end
 
@@ -387,10 +387,10 @@ end
 TBW
 """
 function receiveGridUpdatesBetter!(localLattice::ParallelLattice,simTopo::SimulationTopology,comm::MPI.Comm)
-    (true, MPI.deserialize(buf), stat)
+    # (true, MPI.deserialize(buf), stat)
     received = 0
     for sender in simTopo.topo.otherworkers
-        boolstatus,message,_ = MPI.irecv(sender,1254,comm)
+        boolstatus,message,_ = irecv(sender,1254,comm)
         if boolstatus
             received+=1
             localLattice.recvMessages[sender+1] = message
@@ -409,6 +409,7 @@ function multinodeStreamingStep!(localLattice::ParallelLattice,simTopo::Simulati
     reqs = sendGridUpdates(localLattice,simTopo, comm)
     imprint_streamingStep!(localLattice)
     receiveGridUpdates!(localLattice,simTopo,comm)
+    # receiveGridUpdatesBetter!(localLattice,simTopo,comm)
     addmessagestogrid(localLattice::ParallelLattice)
     resetsendMessages(localLattice,simTopo)
 end
@@ -439,7 +440,7 @@ end
 
 function parallelSimulate!(localLattice::ParallelLattice,sim::Union{Lattice,Nothing},simTopo::SimulationTopology; t0::Float64 = 0.0)
     parallelIntegrate_steps!(localLattice,sim,simTopo)
-    sim.Nt * sim.dt + t0
+    localLattice.Nt * localLattice.dt + t0
 end
 
 """

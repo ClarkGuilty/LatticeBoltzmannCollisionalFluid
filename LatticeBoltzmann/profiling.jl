@@ -2,10 +2,10 @@ include("LatticeBoltzmann.jl")
 using JET
 using BenchmarkTools
 ##
-N = 1024
+N = 16384
 Nx = N
 Nv = N
-Nt = 25
+Nt = 100
 v_min = -1.0
 v_max = 1.0
 x_min = -0.5
@@ -24,7 +24,20 @@ sim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = Nt,
                 dt = dt, V_min=v_min, V_max=v_max, G = G,
                 #grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
                 grid = gaussian_2d.(x_0',v_0))
-#
+
+@time simulate!(sim)
+
+##
+sim = Lattice(X_min = x_min, X_max = x_max, Nx = Nx, Nv = Nv, Nt = Nt,
+                dt = dt, V_min=v_min, V_max=v_max, G = G,
+                #grid = jeans.(x_0', v_0, σ=σ,ρ=ρ,k=k,A=A))
+                grid = gaussian_2d.(x_0',v_0))
+
+@time simulate!(sim)
+VSCodeServer.@profview simulate!(sim)
+
+
+##
 ρ0 = copy(sim.ρ)
 plot(sim.ρ,title="Density")
 simulate!(sim)
